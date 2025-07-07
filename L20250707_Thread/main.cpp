@@ -4,6 +4,7 @@
 
 CRITICAL_SECTION CS;
 volatile LONG BasicSpinlock = 0;
+volatile LONG BasicSpinlock2 = 0;
 
 int Bank = 0;
 
@@ -24,7 +25,7 @@ void EnterSpinlock(volatile LONG* lock)
 	//CAS(Compare And Swap)
 	while (InterlockedCompareExchange(lock, 1, 0) != 0)
 	{
-		Sleep(0);
+		//Sleep(0);
 	}
 }
 
@@ -46,20 +47,28 @@ unsigned Increase(void* Arg)
 
 	for (int i = 0; i < 1000000; ++i)
 	{
-		//atomic 보장
-		//lock 객체 -> spinlock, adaptive spinlock, backoff spinlock
-		//EnterCriticalSection(&CS);
+		EnterSpinlock(&BasicSpinlock2);
 		EnterSpinlock(&BasicSpinlock);
 		Bank++;
-		//context swiching, 진짜로 동시 처리 문제
-		//Register = Bank(메모리)
-		//Register = Register + 1
-		//Bank = Register;
-		//LeaveCriticalSection(&CS);
 		LeaveSpinlock(&BasicSpinlock);
-
+		LeaveSpinlock(&BasicSpinlock2);
 	}
 
+	return 0;
+}
+
+//race condition
+unsigned Decrease(void* Arg)
+{
+
+	for (int i = 0; i < 1000000; ++i)
+	{
+		EnterSpinlock(&BasicSpinlock);
+		EnterSpinlock(&BasicSpinlock2);
+		Bank--;
+		LeaveSpinlock(&BasicSpinlock);
+		LeaveSpinlock(&BasicSpinlock2);
+	}
 
 	return 0;
 }
@@ -67,23 +76,26 @@ unsigned Increase(void* Arg)
 int main()
 {
 	InitializeSpinlock(&BasicSpinlock);
+	InitializeSpinlock(&BasicSpinlock2);
+	//InitializeCriticalSection(&CS);
 	//InitializeCriticalSection(&CS);
 
 
-	HANDLE ThreadHandles[4];
-	for (int i = 0; i < 4; ++i)
-	{
-		ThreadHandles[i] =
+	HANDLE ThreadHandles[2];
+	ThreadHandles[0] =
 			(HANDLE)_beginthreadex(	0, 0, Increase, 0, 0,
 				0);
-	}
-
-	Sleep(2000);
+	ThreadHandles[1] =
+		(HANDLE)_beginthreadex(0, 0, Decrease, 0, 0,
+			0);
+	
+	WaitForMultipleObjects(2, ThreadHandles, TRUE, INFINITE);
 
 	std::cout << Bank << std::endl;
 
 	//DeleteCriticalSection(&CS);
 	DeleteSpinlock(&BasicSpinlock);
+	DeleteSpinlock(&BasicSpinlock2);
 
 	return 0;
 }
